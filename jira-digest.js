@@ -72,14 +72,28 @@ function jiraRequest(path, method = "GET", body = null) {
 }
 
 /**
+ * Returns how many hours back to look for mentions.
+ * On Monday, looks back 72 hours to cover the full weekend (Fri 4pm → Mon 4pm).
+ * All other weekdays look back 24 hours.
+ */
+function lookbackHours() {
+  const day = new Date().toLocaleDateString("en-US", {
+    timeZone: "America/Los_Angeles",
+    weekday: "long",
+  });
+  return day === "Monday" ? 72 : 24;
+}
+
+/**
  * Fetch all issues where Luke has been mentioned in a comment
- * in the last 24 hours.
+ * within the lookback window.
  */
 async function fetchMentionedIssues() {
+  const hours = lookbackHours();
   // JQL: recently updated issues where Luke is involved (assignee, reporter, or watcher)
   // Client-side filtering then extracts only comments that actually @mention him
   const jql = encodeURIComponent(
-    `updated >= -1d AND (assignee = "${CONFIG.jira.email}" OR reporter = "${CONFIG.jira.email}" OR watcher = "${CONFIG.jira.email}") ORDER BY updated DESC`
+    `updated >= -${hours}h AND (assignee = "${CONFIG.jira.email}" OR reporter = "${CONFIG.jira.email}" OR watcher = "${CONFIG.jira.email}") ORDER BY updated DESC`
   );
 
   const res = await jiraRequest(
@@ -111,10 +125,10 @@ function extractMentionedComments(issues) {
       // Extract plain text from ADF
       const plainText = extractPlainTextFromAdf(body);
 
-      // Only include comments updated in last 24 hours
+      // Only include comments within the lookback window
       const updatedAt = new Date(comment.updated);
-      const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-      if (updatedAt < oneDayAgo) continue;
+      const cutoff = new Date(Date.now() - lookbackHours() * 60 * 60 * 1000);
+      if (updatedAt < cutoff) continue;
 
       mentions.push({
         issueKey: issue.key,
@@ -216,6 +230,9 @@ async function sendSlackDigest(mentions, suggestedResponses) {
     dateStyle: "full",
   });
 
+  const hours = lookbackHours();
+  const windowLabel = hours === 72 ? "over the weekend" : "in the last 24 hours";
+
   const headerBlocks = [
     {
       type: "header",
@@ -229,7 +246,7 @@ async function sendSlackDigest(mentions, suggestedResponses) {
       elements: [
         {
           type: "mrkdwn",
-          text: `*${now}* · ${mentions.length} mention${mentions.length !== 1 ? "s" : ""} in the last 24 hours`,
+          text: `*${now}* · ${mentions.length} mention${mentions.length !== 1 ? "s" : ""} ${windowLabel}`,
         },
       ],
     },
@@ -284,7 +301,7 @@ async function sendSlackDigest(mentions, suggestedResponses) {
       type: "section",
       text: {
         type: "mrkdwn",
-        text: "✅ No new mentions in Jira in the last 24 hours. You're all caught up!",
+        text: `✅ No new mentions in Jira ${windowLabel}. You're all caught up!`,
       },
     },
   ];
@@ -329,6 +346,16 @@ async function sendSlackDigest(mentions, suggestedResponses) {
 
 /** Main entry point */
 async function main() {
+  // Skip Saturday and Sunday — Monday's run covers the full weekend
+  const today = new Date().toLocaleDateString("en-US", {
+    timeZone: "America/Los_Angeles",
+    weekday: "long",
+  });
+  if (today === "Saturday" || today === "Sunday") {
+    console.log(`⏭️  Skipping digest on ${today}.`);
+    return;
+  }
+
   console.log("🔍 Fetching Jira mentions...");
 
   // Validate environment
