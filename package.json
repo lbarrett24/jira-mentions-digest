@@ -1,0 +1,15 @@
+{
+  "name": "jira-mentions-digest",
+  "version": "1.0.0",
+  "description": "Runs daily at 4:00 PM PST. Fetches all Jira comments where you've been mentioned in the last 24 hours, generates an AI-suggested reply for each using Claude, and sends you a formatted Slack DM.",
+  "main": "jira-digest.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "dotenv": "^17.3.1"
+  }
+}
