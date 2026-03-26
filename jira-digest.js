@@ -109,12 +109,17 @@ async function fetchMentionedIssues() {
 
 /**
  * From a list of issues, extract only the comments that mention Luke's account.
+ * Skips any issue where Luke's own comment is the most recent one.
  */
 function extractMentionedComments(issues) {
   const mentions = [];
 
   for (const issue of issues) {
     const comments = issue.fields?.comment?.comments || [];
+
+    // Skip the whole issue if Luke's comment is the last one — he's already followed up
+    const lastComment = comments[comments.length - 1];
+    if (lastComment?.author?.accountId === CONFIG.jira.accountId) continue;
 
     for (const comment of comments) {
       const body = comment.body;
